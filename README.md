@@ -59,7 +59,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 | `BAC_PORT` | `3456` | HTTP/SSE port |
 | `BAC_BROWSER_HEADLESS` | `true` | Run Chrome headless |
 | `BAC_MAX_SESSIONS` | `5` | Max concurrent sessions |
-| `SAKANA_DATA_DIR` | `~/.bagidea` | Root data directory |
+| `BAC_DATA_DIR` | `~/.bagidea` | Root data directory |
 
 ## MCP Tools
 
