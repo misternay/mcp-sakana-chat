@@ -1,0 +1,25 @@
+# Source files (already compiled to dist/)
+src/
+tests/
+
+# Development configs
+tsconfig.json
+vitest.config.ts
+.vscode/
+.idea/
+
+# Git
+.git*
+.github/
+
+# Build artifacts
+*.tsbuildinfo
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
