@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sakana Chat - Mock Test Page</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 0; }
+    #__next { display: flex; flex-direction: column; height: 100vh; }
+    .chat-container { flex: 1; padding: 16px; }
+    .chat-input-area { padding: 12px; border-top: 1px solid #e0e0e0; }
+    textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; }
+    [role="textbox"][contenteditable] { min-height: 40px; border: 1px solid #ccc; padding: 8px; }
+  </style>
+</head>
+<body>
+  <div id="__next">
+    <div class="chat-container" data-testid="chat-messages"></div>
+    <div class="chat-input-area">
+      <textarea placeholder="Message Sakana AI..." rows="3"></textarea>
+    </div>
+  </div>
+</body>
+</html>
