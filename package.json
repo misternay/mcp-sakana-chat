@@ -7,6 +7,31 @@
   "bin": {
     "background-ai-chat": "dist/index.js"
   },
+  "author": "Ritthikiat Jindajak",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/misternay/mcp-sakana-chat.git"
+  },
+  "homepage": "https://github.com/misternay/mcp-sakana-chat#readme",
+  "bugs": {
+    "url": "https://github.com/misternay/mcp-sakana-chat/issues"
+  },
+  "keywords": [
+    "mcp",
+    "sakana",
+    "ai",
+    "chat",
+    "mcp-server",
+    "modelcontextprotocol",
+    "background-ai-chat",
+    "headless-chrome"
+  ],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
