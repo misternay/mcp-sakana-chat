@@ -38,7 +38,7 @@ import type { ChatStreamLogPayload } from "../tools/chat_send.js";
 function createMcpServer(manager: SessionManager): Server {
   const server = new Server(
     { name: "background-ai-chat", version: "0.1.0" },
-    { capabilities: { tools: {} } }
+    { capabilities: { tools: {}, logging: {} } }
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({

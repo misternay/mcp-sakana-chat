@@ -30,7 +30,7 @@ const manager = new SessionManager(config);
 function createMcpServer(): Server {
   const server = new Server(
     { name: "background-ai-chat", version: "0.1.0" },
-    { capabilities: { tools: {} } }
+    { capabilities: { tools: {}, logging: {} } }
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
