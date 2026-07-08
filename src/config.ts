@@ -51,7 +51,7 @@ export interface Config {
 }
 
 export function loadConfig(): Config {
-  const dataDir = process.env.BAC_DATA_DIR ?? join(homedir(), ".bagidea");
+  const dataDir = process.env.BAC_DATA_DIR ?? join(homedir(), ".background-ai-chat");
   const transportMode = (process.env.BAC_TRANSPORT ?? "stdio") as "stdio" | "http-sse";
   return {
     transportMode,

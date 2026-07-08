@@ -47,7 +47,7 @@ describe("loadConfig", () => {
     expect(cfg.redactPii).toBe(false);
     expect(cfg.allowedUseCases).toEqual(["personal", "internal"]);
     expect(cfg.sakanaUrl).toBe("https://chat.sakana.ai/");
-    expect(cfg.dataDir).toContain(".bagidea");
+    expect(cfg.dataDir).toContain(".background-ai-chat");
     expect(cfg.sessionsDir).toContain("bac-sessions");
     expect(cfg.tosAckFile).toContain("bac-tos-ack.json");
   });
