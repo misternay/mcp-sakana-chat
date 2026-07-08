@@ -23,11 +23,17 @@ export class BrowserPool {
   private handles = new Map<string, BrowserContextHandle>();
   private idleTimers = new Map<string, NodeJS.Timeout>();
 
+  private chunkListener?: (tag: string, chunk: string) => void;
+
   constructor(
     private readonly sessionsDir: string,
     private readonly maxSessions: number,
     private readonly idleTimeoutMs: number
   ) {}
+
+  setChunkListener(listener: (tag: string, chunk: string) => void) {
+    this.chunkListener = listener;
+  }
 
   private contextPathFor(sessionId: string): string {
     return join(this.sessionsDir, sessionId, ".local-chrome");
@@ -60,6 +66,12 @@ export class BrowserPool {
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
     });
     const page = context.pages()[0] ?? (await context.newPage());
+
+    await page.exposeFunction("onSakanaChunk", (tag: string, chunk: string) => {
+      this.chunkListener?.(tag, chunk);
+    }).catch(() => {
+      // ignore already exposed function errors
+    });
 
     const handle: BrowserContextHandle = { context, page, contextPath };
     this.handles.set(sessionId, handle);

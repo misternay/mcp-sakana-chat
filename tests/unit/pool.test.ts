@@ -18,6 +18,7 @@ vi.mock("playwright", () => {
     })),
     waitForTimeout: vi.fn().mockResolvedValue(undefined),
     close: vi.fn().mockResolvedValue(undefined),
+    exposeFunction: vi.fn().mockResolvedValue(undefined),
   };
 
   const fakeContext = {

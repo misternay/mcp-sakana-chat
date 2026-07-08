@@ -13,9 +13,8 @@ import { TosGate } from "../guards/tos-gate.js";
 import { BrowserPool } from "../browser/pool.js";
 import { SakanaPage } from "../browser/sakana-page.js";
 import {
-  streamMessageResponse,
-  isConversationMessageRequest,
   type SakanaStreamEvent,
+  NdjsonStreamParser,
 } from "../browser/stream-relay.js";
 import { SessionStore, type SessionState, type SessionMode } from "./store.js";
 
@@ -41,10 +40,31 @@ export class SessionManager {
   readonly pool: BrowserPool;
   readonly tos: TosGate;
 
+  // A map of active response listeners: userMessageId -> Parser + callback
+  private activeParsers = new Map<
+    string,
+    { parser: NdjsonStreamParser; onEvent: (e: SakanaStreamEvent) => void }
+  >();
+
   constructor(private readonly config: Config) {
     this.store = new SessionStore(config.sessionsDir);
     this.pool = new BrowserPool(config.sessionsDir, config.maxSessions, config.idleTimeoutMs);
     this.tos = new TosGate(config.tosAckFile);
+
+    // Wire up the browser chunk listener to active parsers
+    this.pool.setChunkListener((tag, chunk) => {
+      const active = this.activeParsers.get(tag);
+      if (active) {
+        try {
+          const events = active.parser.push(chunk);
+          for (const e of events) {
+            active.onEvent(e);
+          }
+        } catch (err) {
+          process.stderr.write(`[bac] Error parsing stream chunk: ${err}\n`);
+        }
+      }
+    });
   }
 
   async open(input: OpenSessionInput): Promise<OpenSessionResult> {
@@ -181,11 +201,13 @@ export class SessionManager {
     // Enforce rate limit before doing any work
     this.checkRateLimit(state);
 
-    const handle = this.pool.get(sessionId);
+    let handle = this.pool.get(sessionId);
     if (!handle) {
-      throw new Error(
-        `Session browser context is not open. Call session_open first (or reopen after idle timeout).`
-      );
+      // Auto-recovery: Re-acquire the browser context (e.g. after idle timeout)
+      process.stderr.write(`[bac] Session context idle or closed. Recovering session ${sessionId}...\n`);
+      handle = await this.pool.acquire(sessionId, this.config.browserHeadless);
+      const sakana = new SakanaPage(handle.page);
+      await sakana.navigateAndWaitReady(this.config.sakanaUrl);
     }
     const sakana = new SakanaPage(handle.page);
 
@@ -223,18 +245,10 @@ export class SessionManager {
     let interrupted = false;
     const errors: { code: string; message: string }[] = [];
 
-    // Arm the response waiter BEFORE kicking the request. Otherwise the
-    // in-page fetch can complete (sendMessage awaits res.text()) before
-    // waitForResponse is armed, and the waiter hangs until its 120s timeout
-    // — a race between sendMessage and waitForResponse (spec §5: no silent
-    // hangs). We capture the waiter as a promise and await it after the
-    // request has been fired.
-    const responsePromise = streamMessageResponse(
-      handle.page,
-      (req) =>
-        isConversationMessageRequest(req) &&
-        req.headers()["x-bac-msg"] === userMessageId,
-      (e) => {
+    const parser = new NdjsonStreamParser();
+    this.activeParsers.set(userMessageId, {
+      parser,
+      onEvent: (e) => {
         if (signal?.aborted) return;
         onEvent(e);
         if (e.type === "finalAnswer") {
@@ -244,21 +258,44 @@ export class SessionManager {
           errors.push({ code: e.code, message: e.message });
         }
       },
-      signal
-    );
-
-    // Now fire the request. The waiter above is already armed, so it will
-    // observe this exact /conversation/{id} response (matched by x-bac-msg).
-    await sakana.sendMessage({
-      conversationId: conversationId!,
-      systemMessageId: systemMessageId!,
-      inputs: opts.message,
-      userMessageId,
-      enableThinking: opts.enableThinking,
-      webSearch: opts.webSearch,
     });
 
-    await responsePromise;
+    const abortPromise = new Promise<void>((_, reject) => {
+      if (signal?.aborted) {
+        reject(new Error("Aborted"));
+        return;
+      }
+      signal?.addEventListener("abort", () => {
+        reject(new Error("Aborted"));
+      });
+    });
+
+    try {
+      await Promise.race([
+        sakana.sendMessage({
+          conversationId: conversationId!,
+          systemMessageId: systemMessageId!,
+          inputs: opts.message,
+          userMessageId,
+          enableThinking: opts.enableThinking,
+          webSearch: opts.webSearch,
+        }),
+        abortPromise,
+      ]);
+    } catch (err) {
+      if (signal?.aborted) {
+        interrupted = true;
+      } else {
+        throw err;
+      }
+    } finally {
+      // Flush the remaining data in the parser
+      const remainingEvents = parser.end();
+      for (const e of remainingEvents) {
+        onEvent(e);
+      }
+      this.activeParsers.delete(userMessageId);
+    }
 
     if (signal?.aborted) {
       interrupted = true;

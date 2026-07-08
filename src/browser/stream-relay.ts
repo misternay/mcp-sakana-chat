@@ -15,7 +15,6 @@
  * front-end, observed in the exploration report.
  */
 
-import type { Page, Request, Response } from "playwright";
 
 export type SakanaStreamEvent =
   | { type: "createdMessage"; messageId: string }
@@ -119,67 +118,4 @@ export class NdjsonStreamParser {
       return { type: "unknown", raw: line };
     }
   }
-}
-
-/**
- * Predicate: is this a Sakana conversation message request?
- * Matches POST /conversation/{uuid} (not the POST /conversation create call,
- * which has no trailing id, and not the /compact sub-path).
- */
-export function isConversationMessageRequest(req: Request): boolean {
-  if (req.method() !== "POST") return false;
-  const url = req.url();
-  return /\/conversation\/[0-9a-fA-F-]{36}(?:[?#]|$)/.test(url) && !url.endsWith("/compact");
-}
-
-/** Predicate: is this a Sakana create-conversation request? */
-export function isCreateConversationRequest(req: Request): boolean {
-  if (req.method() !== "POST") return false;
-  const url = req.url();
-  return /\/conversation(?:[?#]|$)/.test(url) && !/\/conversation\//.test(url);
-}
-
-/**
- * Read the full streamed body of a Sakana message response, emitting events.
- *
- * Playwright's `response.body()` buffers the entire body before resolving, so
- * this yields all events at once after the HTTP response completes. This is the
- * P2 "non-stream" path: correct and simple. P3 incremental emission is layered
- * on top via the logging-notification emitter in chat_send — the parser itself
- * is already incremental (`push`/`end`), so switching to a chunked reader later
- * only changes how bytes arrive, not how events are produced.
- */
-export async function readFullStream(
-  response: Response,
-  onEvent: (e: SakanaStreamEvent) => void
-): Promise<void> {
-  const body = await response.body();
-  const parser = new NdjsonStreamParser();
-  for (const e of parser.push(body)) onEvent(e);
-  for (const e of parser.end()) onEvent(e);
-}
-
-/**
- * Wait for the next Sakana message response on the page and parse its stream.
- *
- * `requestMatcher` identifies the POST /conversation/{id} call among the page's
- * network traffic. If `signal` aborts before the response arrives, we emit a
- * synthetic interrupted `finalAnswer` so the caller always sees a terminal event
- * (§5: no silent failures).
- */
-export async function streamMessageResponse(
-  page: Page,
-  requestMatcher: (req: Request) => boolean,
-  onEvent: (e: SakanaStreamEvent) => void,
-  signal?: AbortSignal
-): Promise<void> {
-  const response = await page.waitForResponse(
-    (resp) => requestMatcher(resp.request()),
-    { timeout: 120_000 }
-  );
-  if (signal?.aborted) {
-    onEvent({ type: "finalAnswer", text: "", interrupted: true });
-    return;
-  }
-  await readFullStream(response, onEvent);
 }

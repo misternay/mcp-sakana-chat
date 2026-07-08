@@ -31,31 +31,49 @@ export class SakanaPage {
     return this.page;
   }
 
-  async navigateAndWaitReady(url: string): Promise<void> {
-    await this.page.goto(url, { waitUntil: "domcontentloaded", timeout: READY_TIMEOUT_MS });
+  async navigateAndWaitReady(url: string, retries = 3): Promise<void> {
+    let attempt = 0;
+    let lastError: Error | null = null;
 
-    // Cloudflare interstitial: wait for it to clear, then for a ready selector.
-    const deadline = Date.now() + READY_TIMEOUT_MS;
-    let ready = false;
-    while (Date.now() < deadline) {
-      for (const sel of READY_SELECTORS) {
-        const loc = this.page.locator(sel).first();
-        try {
-          await loc.waitFor({ state: "visible", timeout: 2_000 });
-          ready = true;
-          break;
-        } catch {
-          // try next selector
+    while (attempt < retries) {
+      try {
+        await this.page.goto(url, { waitUntil: "domcontentloaded", timeout: READY_TIMEOUT_MS });
+
+        // Cloudflare interstitial: wait for it to clear, then for a ready selector.
+        const deadline = Date.now() + READY_TIMEOUT_MS;
+        let ready = false;
+        while (Date.now() < deadline) {
+          for (const sel of READY_SELECTORS) {
+            const loc = this.page.locator(sel).first();
+            try {
+              await loc.waitFor({ state: "visible", timeout: 2_000 });
+              ready = true;
+              break;
+            } catch {
+              // try next selector
+            }
+          }
+          if (ready) break;
+          await this.page.waitForTimeout(500);
         }
+        if (ready) return;
+        throw new Error(
+          "Sakana chat input not found within timeout. The page may have changed or Cloudflare is blocking."
+        );
+      } catch (err) {
+        attempt++;
+        lastError = err instanceof Error ? err : new Error(String(err));
+        if (attempt >= retries) break;
+        const delay = Math.pow(2, attempt) * 1000;
+        process.stderr.write(
+          `[bac] Navigation attempt ${attempt} failed. Retrying in ${delay}ms... Error: ${lastError.message}\n`
+        );
+        await this.page.waitForTimeout(delay);
       }
-      if (ready) break;
-      await this.page.waitForTimeout(500);
     }
-    if (!ready) {
-      throw new Error(
-        "Sakana chat input not found within timeout. The page may have changed or Cloudflare is blocking."
-      );
-    }
+    throw new Error(
+      `Failed to navigate and initialize Sakana page after ${retries} attempts. Last error: ${lastError?.message}`
+    );
   }
 
   async isReady(): Promise<boolean> {
@@ -160,10 +178,26 @@ export class SakanaPage {
           body: form,
         });
         if (!res.ok) {
-          await res.text().catch(() => {});
-          throw new Error(`sendMessage HTTP ${res.status}`);
+          const errText = await res.text().catch(() => "Unknown error");
+          throw new Error(`sendMessage HTTP ${res.status}: ${errText}`);
         }
-        await res.text();
+        
+        const body = res.body;
+        if (!body) {
+          throw new Error("Response body is not readable");
+        }
+        const reader = body.getReader();
+        const decoder = new TextDecoder();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const textChunk = decoder.decode(value, { stream: true });
+            await (window as any).onSakanaChunk(payload.tag, textChunk);
+          }
+        } finally {
+          reader.releaseLock();
+        }
       },
       { url, data, tag: opts.userMessageId }
     );
