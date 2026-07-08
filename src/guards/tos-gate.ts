@@ -15,14 +15,21 @@ export interface TosAck {
 }
 
 export class TosGate {
+  private cached: TosAck | null | undefined = undefined; // undefined = not loaded yet
+
   constructor(private readonly tosAckFile: string) {}
 
   async getAck(): Promise<TosAck | null> {
+    if (this.cached !== undefined) return this.cached;
     try {
       const raw = await readFile(this.tosAckFile, "utf8");
-      return JSON.parse(raw) as TosAck;
+      this.cached = JSON.parse(raw) as TosAck;
+      return this.cached;
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        this.cached = null;
+        return null;
+      }
       throw err;
     }
   }
@@ -51,6 +58,7 @@ export class TosGate {
     };
     await mkdir(dirname(this.tosAckFile), { recursive: true });
     await writeFile(this.tosAckFile, JSON.stringify(ack, null, 2), "utf8");
+    this.cached = ack; // update in-memory cache
   }
 }
 

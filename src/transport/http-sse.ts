@@ -28,37 +28,8 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 import type { Config } from "../config.js";
 import { AuthGuard, AuthError } from "../guards/auth.js";
 import type { SessionManager } from "../sessions/manager.js";
-import { sessionOpenTool, SessionOpenInputSchema } from "../tools/session_open.js";
-import { sessionCloseTool, SessionCloseInputSchema } from "../tools/session_close.js";
-import { sessionListTool, SessionListInputSchema } from "../tools/session_list.js";
-
-interface ToolEntry {
-  name: string;
-  description: string;
-  schema: any;
-  handler: (manager: SessionManager, input: any) => Promise<string>;
-}
-
-const TOOLS: ToolEntry[] = [
-  {
-    name: sessionOpenTool.name,
-    description: sessionOpenTool.description,
-    schema: SessionOpenInputSchema,
-    handler: sessionOpenTool.handler,
-  },
-  {
-    name: sessionCloseTool.name,
-    description: sessionCloseTool.description,
-    schema: SessionCloseInputSchema,
-    handler: sessionCloseTool.handler,
-  },
-  {
-    name: sessionListTool.name,
-    description: sessionListTool.description,
-    schema: SessionListInputSchema,
-    handler: sessionListTool.handler,
-  },
-];
+import { TOOLS, type ToolDeps } from "../tools/registry.js";
+import type { ChatStreamLogPayload } from "../tools/chat_send.js";
 
 /**
  * Create an MCP Server pre-wired with all tool handlers.
@@ -78,7 +49,7 @@ function createMcpServer(manager: SessionManager): Server {
     })),
   }));
 
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const { name, arguments: args } = request.params;
     const entry = TOOLS.find((t) => t.name === name);
     if (!entry) {
@@ -87,8 +58,30 @@ function createMcpServer(manager: SessionManager): Server {
       );
     }
     const input = entry.schema.parse(args ?? {});
-    const result = await entry.handler(manager, input);
-    return { content: [{ type: "text", text: result }] };
+    const deps: ToolDeps = {
+      notify: (payload) => {
+        void server
+          .sendLoggingMessage({
+            level: "info",
+            data: payload,
+          })
+          .catch(() => {
+            // best-effort; never break the stream on a notification failure
+          });
+      },
+      signal: extra?.signal,
+    };
+    try {
+      const result = await entry.handler(manager, input, deps);
+      return { content: [{ type: "text", text: result }] };
+    } catch (error) {
+      const rawMessage = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`[bac] tool ${name} error: ${rawMessage}\n`);
+      return {
+        content: [{ type: "text", text: `Error: ${rawMessage}` }],
+        isError: true,
+      };
+    }
   });
 
   return server;

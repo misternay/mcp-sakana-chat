@@ -20,61 +20,9 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 
 import { loadConfig } from "./config.js";
 import { SessionManager } from "./sessions/manager.js";
-import { sessionOpenTool, SessionOpenInputSchema } from "./tools/session_open.js";
-import { sessionCloseTool, SessionCloseInputSchema } from "./tools/session_close.js";
-import { sessionListTool, SessionListInputSchema } from "./tools/session_list.js";
-import {
-  chatSendTool,
-  ChatSendInputSchema,
-  type ChatStreamLogPayload,
-} from "./tools/chat_send.js";
-import { chatInterruptTool, ChatInterruptInputSchema } from "./tools/chat_interrupt.js";
+import { TOOLS, type ToolDeps } from "./tools/registry.js";
+import type { ChatStreamLogPayload } from "./tools/chat_send.js";
 import { createHttpsseTransport } from "./transport/http-sse.js";
-
-interface ToolDeps {
-  notify?: (payload: ChatStreamLogPayload) => void;
-  signal?: AbortSignal;
-}
-
-interface ToolEntry {
-  name: string;
-  description: string;
-  schema: any;
-  handler: (manager: SessionManager, input: any, deps?: ToolDeps) => Promise<string>;
-}
-
-const TOOLS: ToolEntry[] = [
-  {
-    name: sessionOpenTool.name,
-    description: sessionOpenTool.description,
-    schema: SessionOpenInputSchema,
-    handler: sessionOpenTool.handler,
-  },
-  {
-    name: sessionCloseTool.name,
-    description: sessionCloseTool.description,
-    schema: SessionCloseInputSchema,
-    handler: sessionCloseTool.handler,
-  },
-  {
-    name: sessionListTool.name,
-    description: sessionListTool.description,
-    schema: SessionListInputSchema,
-    handler: sessionListTool.handler,
-  },
-  {
-    name: chatSendTool.name,
-    description: chatSendTool.description,
-    schema: ChatSendInputSchema,
-    handler: chatSendTool.handler,
-  },
-  {
-    name: chatInterruptTool.name,
-    description: chatInterruptTool.description,
-    schema: ChatInterruptInputSchema,
-    handler: chatInterruptTool.handler,
-  },
-];
 
 const config = loadConfig();
 const manager = new SessionManager(config);

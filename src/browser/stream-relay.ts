@@ -79,8 +79,12 @@ export class NdjsonStreamParser {
    */
   push(chunk: Buffer | string): SakanaStreamEvent[] {
     // Strip null-byte padding (0x00) that Sakana inserts between records.
+    // Only allocate a filtered buffer when null bytes are actually present.
     const bytes = typeof chunk === "string" ? Buffer.from(chunk, "utf8") : chunk;
-    const cleaned = Buffer.from(bytes.filter((b) => b !== 0x00)).toString("utf8");
+    const hasNulls = bytes.includes(0x00);
+    const cleaned = hasNulls
+      ? Buffer.from(bytes.filter((b) => b !== 0x00)).toString("utf8")
+      : bytes.toString("utf8");
     this.buffer += cleaned;
     return this.drain(false);
   }

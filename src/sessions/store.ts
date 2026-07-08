@@ -6,6 +6,9 @@
  *   - .local-chrome/  (persistent browser context, owned by pool.ts)
  *
  * No SQLite — matches bagidea-mcp convention. Sessions are few.
+ *
+ * Uses an in-memory Map as a write-through cache. With max 5 sessions
+ * this avoids redundant filesystem reads on every chat_send call.
  */
 
 import { mkdir, readFile, writeFile, readdir, rm, stat } from "node:fs/promises";
@@ -33,6 +36,10 @@ export interface SessionState {
 }
 
 export class SessionStore {
+  /** In-memory cache — populated on first list/load, write-through on save. */
+  private cache = new Map<string, SessionState>();
+  private cacheWarmed = false;
+
   constructor(private readonly sessionsDir: string) {}
 
   private dirFor(sessionId: string): string {
@@ -43,16 +50,24 @@ export class SessionStore {
     return join(this.dirFor(sessionId), "state.json");
   }
 
+  /** Save state to disk and update the in-memory cache. */
   async save(state: SessionState): Promise<void> {
     const dir = this.dirFor(state.sessionId);
     await mkdir(dir, { recursive: true });
     await writeFile(this.fileFor(state.sessionId), JSON.stringify(state, null, 2), "utf8");
+    this.cache.set(state.sessionId, state);
   }
 
+  /** Load from cache first, then disk. Cache the result either way. */
   async load(sessionId: string): Promise<SessionState | null> {
+    const cached = this.cache.get(sessionId);
+    if (cached) return cached;
+
     try {
       const raw = await readFile(this.fileFor(sessionId), "utf8");
-      return JSON.parse(raw) as SessionState;
+      const state = JSON.parse(raw) as SessionState;
+      this.cache.set(sessionId, state);
+      return state;
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
       throw err;
@@ -60,6 +75,7 @@ export class SessionStore {
   }
 
   async exists(sessionId: string): Promise<boolean> {
+    if (this.cache.has(sessionId)) return true;
     try {
       await stat(this.fileFor(sessionId));
       return true;
@@ -69,6 +85,7 @@ export class SessionStore {
   }
 
   async delete(sessionId: string, keepHistory: boolean): Promise<void> {
+    this.cache.delete(sessionId);
     if (keepHistory) {
       // keep state.json, remove only browser context dir
       return;
@@ -77,11 +94,19 @@ export class SessionStore {
   }
 
   async list(): Promise<SessionState[]> {
+    // If cache is warm and has entries, return from cache
+    if (this.cacheWarmed) {
+      return [...this.cache.values()];
+    }
+
     let entries: Dirent[];
     try {
       entries = await readdir(this.sessionsDir, { withFileTypes: true });
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        this.cacheWarmed = true;
+        return [];
+      }
       throw err;
     }
     const states: SessionState[] = [];
@@ -90,6 +115,7 @@ export class SessionStore {
       const state = await this.load(entry.name);
       if (state) states.push(state);
     }
+    this.cacheWarmed = true;
     return states;
   }
 }

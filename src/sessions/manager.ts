@@ -48,8 +48,6 @@ export class SessionManager {
   }
 
   async open(input: OpenSessionInput): Promise<OpenSessionResult> {
-    await this.tos.require(Boolean(input.tosAccepted));
-
     const login = input.login ?? "anonymous";
     const headless = input.headless ?? this.config.browserHeadless;
     const mode: SessionMode = login === "anonymous" ? "anonymous" : "authenticated";
@@ -57,7 +55,11 @@ export class SessionManager {
     const sessionId = `bac_${randomUUID()}`;
     const now = new Date().toISOString();
 
-    const handle = await this.pool.acquire(sessionId, headless);
+    // Parallelize ToS check and browser acquisition — no data dependency.
+    const [, handle] = await Promise.all([
+      this.tos.require(Boolean(input.tosAccepted)),
+      this.pool.acquire(sessionId, headless),
+    ]);
     const sakana = new SakanaPage(handle.page);
     await sakana.navigateAndWaitReady(this.config.sakanaUrl);
 
@@ -134,6 +136,33 @@ export class SessionManager {
    * State updates: persists discovered conversationId/systemMessageId on first
    * send, bumps messagesExchanged + lastSeen on every send.
    */
+  /**
+   * Enforce the token-bucket rate limit. Refills tokens when the window has
+   * elapsed; throws if the bucket is empty.
+   */
+  private checkRateLimit(state: SessionState): void {
+    const now = Date.now();
+    const refilledAt = new Date(state.rateBucket.refilledAt).getTime();
+    const maxTokens = state.mode === "anonymous" ? RATE_ANON_MAX : RATE_AUTH_MAX;
+
+    // Refill if the window has elapsed
+    if (now - refilledAt >= RATE_WINDOW_MS) {
+      state.rateBucket.tokens = maxTokens;
+      state.rateBucket.refilledAt = new Date(now).toISOString();
+    }
+
+    if (state.rateBucket.tokens <= 0) {
+      const retryAfterMs = RATE_WINDOW_MS - (now - refilledAt);
+      const retryAfterSec = Math.ceil(retryAfterMs / 1000);
+      throw new Error(
+        `Rate limit exceeded (${maxTokens} messages per ${RATE_WINDOW_MS / 60_000} min). ` +
+        `Retry after ${retryAfterSec}s.`
+      );
+    }
+
+    state.rateBucket.tokens -= 1;
+  }
+
   async chatSend(
     sessionId: string,
     opts: {
@@ -148,6 +177,10 @@ export class SessionManager {
     if (!state) {
       throw new Error(`Session not found: ${sessionId}`);
     }
+
+    // Enforce rate limit before doing any work
+    this.checkRateLimit(state);
+
     const handle = this.pool.get(sessionId);
     if (!handle) {
       throw new Error(

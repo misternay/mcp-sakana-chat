@@ -8,7 +8,7 @@
  * Uses timing-safe comparison to prevent timing side-channel leaks.
  */
 
-import { timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 
 const BEARER_RE = /^Bearer\s+(.+)$/i;
@@ -46,14 +46,12 @@ export class AuthGuard {
 
     const supplied = Buffer.from(match[1], "utf8");
 
-    // Pad to equal length for timing-safe comparison
-    const targetLen = Math.max(supplied.length, this.keyBytes!.length);
-    const a = Buffer.alloc(targetLen, 0);
-    const b = Buffer.alloc(targetLen, 0);
-    supplied.copy(a);
-    this.keyBytes!.copy(b);
+    // Compare HMAC digests — fixed-length output avoids leaking key length
+    // through allocation size differences. SHA-256 → always 32 bytes.
+    const hmac = (data: Buffer) =>
+      createHmac("sha256", "bac-auth-compare").update(data).digest();
 
-    if (!timingSafeEqual(a, b)) {
+    if (!timingSafeEqual(hmac(supplied), hmac(this.keyBytes!))) {
       throw new AuthError("Invalid auth token.");
     }
   }
