@@ -1,6 +1,6 @@
 {
   "name": "background-ai-chat",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Background AI Chat MCP server — drive chat.sakana.ai via headless Chrome through MCP tools (personal/internal use only)",
   "type": "module",
   "main": "dist/index.js",

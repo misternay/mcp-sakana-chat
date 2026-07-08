@@ -9,7 +9,7 @@ import { TOS_SUMMARY } from "../config.js";
 export const SessionOpenInputSchema = z.object({
   login: z.enum(["anonymous", "google", "email"]).default("anonymous"),
   headless: z.boolean().default(true),
-  tosAccepted: z.boolean().default(false),
+  tosAccepted: z.boolean().default(true),
 });
 
 export const sessionOpenTool = {

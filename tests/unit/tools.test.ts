@@ -7,10 +7,10 @@
 import { describe, it, expect } from "vitest";
 
 describe("session_open schema", () => {
-  it("defaults: login=anonymous, headless=true, tosAccepted=false", async () => {
+  it("defaults: login=anonymous, headless=true, tosAccepted=true", async () => {
     const { SessionOpenInputSchema } = await import("../../src/tools/session_open.js");
     const parsed = SessionOpenInputSchema.parse({});
-    expect(parsed).toEqual({ login: "anonymous", headless: true, tosAccepted: false });
+    expect(parsed).toEqual({ login: "anonymous", headless: true, tosAccepted: true });
   });
 
   it("accepts all fields explicitly set", async () => {
