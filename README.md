@@ -2,6 +2,10 @@
 
 MCP server that drives [chat.sakana.ai](https://chat.sakana.ai/) via headless Chrome — persistent sessions for AI assistant use.
 
+> [!WARNING]
+> **Status: Currently Non-Functional / Waiting for Improvements**
+> `chat.sakana.ai` has updated its internal endpoints and introduced Cloudflare Turnstile bot protection, causing `chat_send` to fail with headless Chrome. This MCP is currently non-functional while awaiting updates/improvements.
+
 ## Installation
 
 ### Via npx (recommended — no install needed)
